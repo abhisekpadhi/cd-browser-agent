@@ -1,6 +1,6 @@
 # Browser agent
 
-This is a browser use agent that can take user query in natural language and do actions on behlaf of the user.
+This is a browser use agent that can take user query in natural language and does actions on behalf of the user.
 
 ## Stack
 
@@ -10,7 +10,7 @@ This is a browser use agent that can take user query in natural language and do 
 
 ## Architecture
 
--   We will use a vision model
+-   This project implements a vision model based browser control agents.
 -   In a web-page a user can do following actions - `input`, `click` or `extract data`
 
 -   First, we generate an action plan
@@ -98,4 +98,3 @@ npm run dev
 -   **User perceived latency** -
     Currently in this project we are not using streaming from models
     We can stream from models and stream the response to frontend usig SSE (server-sent-event) in future so the response delay from the chatbot seems less
-# cd-browser-agent

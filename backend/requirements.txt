@@ -1,0 +1,9 @@
+flask
+flask_cors
+flask-sse 
+gunicorn 
+gevent
+playwright
+dotenv
+openai
+playwright-stealth

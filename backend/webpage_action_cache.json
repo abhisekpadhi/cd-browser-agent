@@ -1,0 +1,14 @@
+{
+  "./screenshots/ebd45c17-99d6-412c-ae3a-35f1231941b7_1.png:In the Google search bar, type 'green frontier capital yourstory' and press Enter.": [
+    {
+      "box_click": 1,
+      "input_text": "green frontier capital yourstory",
+      "extracted_data": null
+    },
+    {
+      "box_click": 4,
+      "input_text": null,
+      "extracted_data": null
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "search for green frontier capital yourstory on google and get the headline of the first article": {
+    "goto": "https://www.google.com",
+    "action_plan": [
+      "Open your web browser and go to https://www.google.com.",
+      "In the Google search bar, type 'green frontier capital yourstory' and press Enter.",
+      "Look at the search results and find the first article from YourStory.",
+      "Click on the first article from YourStory to open it.",
+      "Read the headline of the article."
+    ],
+    "goal": "The headline of the first article from YourStory about Green Frontier Capital.",
+    "query_id": "ebd45c17-99d6-412c-ae3a-35f1231941b7",
+    "query": "search for green frontier capital yourstory on google and get the headline of the first article"
+  }
+}
