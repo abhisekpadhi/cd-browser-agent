@@ -7,8 +7,8 @@ import os
 load_dotenv()
 
 LOG_FILE = "chat_history.log"
-WEBPAGE_ACTION_CACHE_FILE_PATH="webpage_action_cache.json"
-
+BROWSER_ACTION_CACHE_FILE_PATH="./cache/browser_actions_cache.json"
+ACTION_PLAN_CACHE_FILE_PATH="./cache/action_plan_cache.json"
 
 # Access your keys
 config = {

@@ -1,14 +1,18 @@
 # Browser agent
 
-This is a browser use agent that can take user query in natural language and does actions on behalf of the user.
+This is a browser use agent that can take user query in natural language and execute actions on behalf of the user.
 
 ## Stack
 
--   backend: python3, flask
+-   backend: python3, flask, playwright
 -   frontend: nextjs
--   llm agents: gpt-4o-mini (action plan generator), gpt-4o (vision model, decide browser action)
+-   llm agents:
+    -   gpt-4o-mini (action plan generator),
+    -   gpt-4o (vision model, decide browser action)
 
-## Architecture
+## Design
+
+### Low-level
 
 -   This project implements a vision model based browser control agents.
 -   In a web-page a user can do following actions - `input`, `click` or `extract data`
@@ -17,20 +21,19 @@ This is a browser use agent that can take user query in natural language and doe
 
 ```json
 {
-	"user_query": "download invoice of my last amazon order",
-	"goto": "https://www.amazon.com",
-	"action_plan": [
-		"Click on 'Sign In' at the top right corner.",
-		"Enter your email/phone number and password, then click 'Sign In'.",
-		"Click on 'Returns & Orders' at the top right to view your order history.",
-		"Locate the topmost order in the list (this is typically your most recent order).",
-		"Click on 'Invoice' or 'Order Details' next to the order.",
-		"If you clicked 'Order Details', then click on 'Invoice' or 'View/Print Invoice' on the next page.",
-		"When the invoice opens as a PDF, click the download icon or right-click and select 'Download'.",
-		"Choose a save location and confirm the download."
-	],
-	"steps_done": [],
-	"goal": "Confirm that a PDF file of the invoice is downloaded and opens correctly showing the order details."
+	"search for green frontier capital yourstory on google and get the headline of the first article": {
+		"goto": "https://www.google.com",
+		"action_plan": [
+			"Open your web browser and go to https://www.google.com.",
+			"In the Google search bar, type 'green frontier capital yourstory' and press Enter.",
+			"Click on the first article from YourStory to open it.",
+			"Read the headline of the article."
+		],
+		"goal": "The headline of the first article from YourStory about Green Frontier Capital.",
+		"query_id": "ebd45c17-99d6-412c-ae3a-35f1231941b7",
+		"query": "search for green frontier capital yourstory on google and get the headline of the first article",
+		"vision_only": ["Read the headline of the article."]
+	}
 }
 ```
 
@@ -53,6 +56,39 @@ This is a browser use agent that can take user query in natural language and doe
 -   Outside of the loop goal is checked for validation
 -   If goal not achieved then restart the loop from the last step
 
+### High-level current
+
+![Architecture Diagram](docs/current_arch.png)
+
+-   Current architecture is created for POC purpost and has following caveats:
+    -   No retry on website crash/failures
+    -   No resumability
+    -   Brittle in nature
+    -   if processor goes down, incoming jobs are lost, progress lost
+    -   DB is a file stored locally
+    -   Recall is based on in-memory cache
+    -   While writing results DB can go down, writes are lost
+
+### High-level future
+
+![Architecture Diagram](docs/future_arch.png)
+
+-   **Resiliency**
+
+    -   Temporal workers can retry on worker crash or website crash/error
+    -   Temporal workers can resume state
+    -   If processor layer (temporal workers) go down, incoming jobs are buffered in kafka
+    -   Distributed DB like dynamodb & distributed file store like S3 is used
+    -   Recall is built on distributed cache
+
+-   **Scalability**
+    -   API nodes, SSE layer, LLM-agents can be scaled using k8 pods horizontal autoscaler
+    -   Recall layer, SQL DB (temporal) can be sharded by region
+    -   Temporal workers can be used to handle concurrent workload using go routines with a bound
+    -   Job status updates are written to DB asynchronously, also buffered
+    -   Each worker can have their own re-usable browser instance for parallel query processing
+    -   Dynamodb can handle bursty i/o as well as scale out on demand
+
 ## How to run it
 
 ### backend
@@ -61,7 +97,7 @@ This is a browser use agent that can take user query in natural language and doe
 cd backend/
 python3 -m venv .venv
 source .venv/bin/activate
-python app.py
+gunicorn main:app --worker-class gevent --bind 0.0.0.0:8000
 ```
 
 ### frontend
@@ -87,14 +123,12 @@ npm run dev
 
 ## Optimisations
 
--   **Reduce hallucinations** -
+-   **Reduce hallucinations** - We can use chain-of-thought prompting and structured outputs to constrain model responses and reduce hallucinations.
 
--   **Security**
+-   **Security** - We can implement sandboxed browser environments and rate limiting to prevent malicious use of the browser automation system.
 
 -   **Tracing, caching & feedback** - Currently in this project there is no tracing thus we cannot record feedback & score the output
-    Prompt caching is required to control cost
-    We can use langfuse to implement these in future
+    Prompt caching is required to control cost. We can use langfuse to implement these in future.
 
 -   **User perceived latency** -
-    Currently in this project we are not using streaming from models
-    We can stream from models and stream the response to frontend usig SSE (server-sent-event) in future so the response delay from the chatbot seems less
+    We can build a recall layer for creating cache of popular user queries so users will feel instant results for popular queries on popular websites, rather than waiting for crawling to finish.

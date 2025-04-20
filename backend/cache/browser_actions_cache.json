@@ -1,0 +1,26 @@
+{
+  "./screenshots/ebd45c17-99d6-412c-ae3a-35f1231941b7_0.png:In the Google search bar, type 'green frontier capital yourstory' and press Enter.": [
+    {
+      "box_click": 7,
+      "input_text": "green frontier capital yourstory",
+      "extracted_data": null
+    },
+    {
+      "box_click": 10,
+      "input_text": null,
+      "extracted_data": null
+    }
+  ],
+  "./screenshots/ebd45c17-99d6-412c-ae3a-35f1231941b7_1.png:Click on the first article from YourStory to open it.": [
+    {
+      "box_click": 19,
+      "input_text": null,
+      "extracted_data": null
+    }
+  ],
+  "./screenshots/ebd45c17-99d6-412c-ae3a-35f1231941b7_2.png:Read the headline of the article.": {
+    "box_click": null,
+    "input_text": null,
+    "extracted_data": "Green Frontier Capital launches Rs 1,500 Cr fund aimed at climate tech startups"
+  }
+}

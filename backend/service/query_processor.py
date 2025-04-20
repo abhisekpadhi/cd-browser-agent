@@ -6,10 +6,12 @@ from openai import AzureOpenAI
 from config import openai
 from playwright.sync_api import sync_playwright, Page
 from playwright_stealth import stealth_sync
-from browser_interactor import BrowserInteractor
+from lib.browser_interactor import BrowserInteractor
 import random
-from agents.webpage_action_generator_agent import webpage_action_generator
-
+from agents.browser_action_generator_agent import browser_action_generator
+from agents.action_plan_generator_agent import action_plan_generator
+from datetime import datetime
+from lib.utils import generate_screenshot_base64
 
 class QueryProcessorService:
     def __init__(self, openai: AzureOpenAI):
@@ -19,84 +21,19 @@ class QueryProcessorService:
         if app is not None:
             with app.app_context(): 
                 sse.publish(json)
-
-    def get_plan_cache(self, user_query: str) -> dict:
-        # Try to read from plan_cache.json and return cached plan if it exists
-        try:
-            with open('plan_cache.json', 'r') as f:
-                cache = json.load(f)
-                if user_query in cache:
-                    return cache[user_query]
-        except (FileNotFoundError, json.JSONDecodeError):
-            # Return None if file doesn't exist or is invalid JSON
-            return None
-        
-        # Return None if query not found in cache
-        return None
-        
-
-    def set_plan_cache(self, user_query: str, plan: dict):
-        # Write the plan to plan_cache.json
-        try:
-            # Try to read existing cache first
-            with open('plan_cache.json', 'r') as f:
-                cache = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            # Create new cache if file doesn't exist or is invalid
-            cache = {}
-            
-            # Add/update the plan for this query
-            cache[user_query] = plan
-            
-        # Write updated cache back to file
-        with open('plan_cache.json', 'w') as f:
-            json.dump(cache, f, indent=2)
-
+                # sse.publish(json, type='status', channel=json["query_id"]) # for Production
 
     def generate_action_plan(self, user_query, query_id):
-        cache = self.get_plan_cache(user_query=user_query)
-
-        if cache is not None:
-            # cache hit
-            return cache
-        
-        prompt = f'''
-            You are a human who uses web browser. 
-            You will list step by step action plan to accomplish the user query.
-
-            User query - {user_query}
-
-            goal property is how to validate.
-        '''  + "Output into this format - { \"goto\": \"url\", \"action_plan\": [], \"goal\": \"\" }"
-
-        clean_prompt = dedent(prompt)
-
-        response = self.openai.chat.completions.create(
-            model="GPT4o-mini",
-            messages=[{"role": "user", "content": clean_prompt}],
-            temperature=0.3,
-            max_tokens=300,
-            top_p=0.95
-        )
-        result = response.choices[0].message.content
-        # Parse the JSON string into a Python dictionary
-        plan = json.loads(result)
-        
-        # Add query_id and query to the plan
-        plan["query_id"] = query_id
-        plan["query"] = user_query
-
-        # set cache
-        self.set_plan_cache(user_query=user_query, plan=plan)
-        
+        plan = action_plan_generator.generate_action_plan(user_query=user_query, query_id=query_id)
         return plan
+
     
     def random_color(self):
         return f"#{random.randint(0, 0xFFFFFF):06x}"
     
     def draw_bounding_box_and_screenshot(self, page: Page, query_id: str, step_idx: int):
         # Select all buttons and input elements
-        selector = "button, input, textarea"
+        selector = "button, input, textarea, a"
 
         # Assign data-box-number to each element and get their bounding boxes
         boxes = page.eval_on_selector_all(
@@ -156,16 +93,30 @@ class QueryProcessorService:
 
         # Take screenshot
         screenshot_path=f"./screenshots/{query_id}_{step_idx}.png"
-        page.screenshot(path=screenshot_path, full_page=True)
-        print(f"Screenshot saved as {screenshot_path}")
+        page.screenshot(path=screenshot_path, full_page=False)
+        return screenshot_path
+    
+    def screenshot_vision_only(self, page: Page, query_id: str, step_idx: int):
+        screenshot_path=f"./screenshots/{query_id}_{step_idx}.png"
+        print("screenshot_vision_only, Taking screenshot")
+    
+        # Stop any further loading
+        page.evaluate("window.stop()")
+        print("screenshot_vision_only, Stopped page loading")
+        
+        page.screenshot(path=screenshot_path, full_page=False)
+        print("screenshot_vision_only, screenshot taken")
         return screenshot_path
 
     def generate_browser_action_on_page(self, screenshot_path, action):
-        actions = webpage_action_generator.generate_page_actions(screenshot_path, action)
+        actions = browser_action_generator.generate_page_actions(screenshot_path, action)
+        return actions
+    
+    def generate_vision_only_action_on_page(self, screenshot_path, action):
+        actions = browser_action_generator.generate_vision_only_actions(screenshot_path, action)
         return actions
     
     def act_on_box(self, page: Page, action: str):
-        print("")
         box_number_to_act_on = action["box_click"]
         selector = f'[data-box-number="{box_number_to_act_on}"]'
         element = page.query_selector(selector)
@@ -189,6 +140,7 @@ class QueryProcessorService:
             elif tag == "a":
                 element.click()
                 print(f"Clicked link with box number {box_number_to_act_on}")
+                print("Page loaded after clicking link")
 
         
     def do_browser_actions(self, actions, page: Page): 
@@ -198,6 +150,8 @@ class QueryProcessorService:
         threading.Event().wait(5)  # Simulate processing time
     
     def execute_action_plan(self, plan, app):
+        self.notify({"message": f"Executing action plan for query ID: {plan['query_id']}"}, app=app)
+
         # Use sync_playwright within the thread
         with sync_playwright() as p:
             query_id = plan["query_id"]
@@ -211,61 +165,78 @@ class QueryProcessorService:
 
             # Send a status update using SSE
             # sse.publish({"message": f"Starting processing for query ID: {query_id}"}, type='status', channel=query_id)
-            self.notify({"message": f"Starting processing for query ID: {query_id}"})
+            self.notify({"message": f"Browser launched"}, app=app)
 
             page = None
             try:
                 page = browser.new_page()
-                stealth_sync(page)
+                stealth_sync(page) # solve for captcha
                 print(f"Query {query_id}: Created new page.")
-
+                self.notify({"message": f"New page created"}, app=app)
                 # Create a SyncBrowserInteractor instance for this task's page
                 interactor = BrowserInteractor(browser) # Pass the browser instance
                 interactor.goto(page=page, url=plan["goto"])
                 
-                self.notify({"message": f"Navigated to example.com"})
+                self.notify({"message": f"Navigated to {plan['goto']}"}, app=app)
 
-                # Skipping first action since it's usually navigating to the goto url
+                
                 action_plan_list = plan["action_plan"]
 
                 """
-                    agent_decided_action = {
+                    browser_actions = [{
                         "box_click": 1,
                         "input_text": "system generated",
                         "extracted_data": ""
-                    }
+                    }]
                 """
-                last_action = None
+                last_actions = None
 
-                screenshot_path = self.draw_bounding_box_and_screenshot(page=page, query_id=query_id, step_idx=1)
-                actions = self.generate_browser_action_on_page(screenshot_path=screenshot_path, action=action_plan_list[1])
-                print("actions - ", actions)
-                self.do_browser_actions(actions, page)
 
+                # Skipping first action since it's usually navigating to the goto url
                 for step_idx, action in enumerate(action_plan_list[1:]):
-                    print(f"will do step {step_idx}: {action}")
+                    print("------------------------------")
+
+                    print(f"Doing step {step_idx}: {action}")
+                    self.notify({"message": f"Doing step {step_idx}: {action}"})
+
+                    # if the action is in the vision_only list, then we need to generate the vision only action
+                    if action in plan["vision_only"]:
+                        screenshot_path = self.screenshot_vision_only(page=page, query_id=query_id, step_idx=step_idx)
+                        self.notify({"message": f"Screenshot taken for vision only action", "img": generate_screenshot_base64(screenshot_path)}, app=app)
+                        
+                        actions = self.generate_vision_only_action_on_page(screenshot_path=screenshot_path, action=action)
+                        self.notify({"message": f"Vision only actions generated", "actions": actions}, app=app)
+
+                        last_actions = actions
+                        
+                        print("vision only actions generated", json.dumps(actions, indent=2))
+
+                        continue
 
                     # draw bounding box & take screenshot
                     # self.draw_bounding_box_and_screenshot(page=page)
+                    screenshot_path = self.draw_bounding_box_and_screenshot(page=page, query_id=query_id, step_idx=step_idx)
+                    print(f"Screenshot saved as {screenshot_path}")
+                    self.notify({"message": f"Screenshot taken for browser action", "img": generate_screenshot_base64(screenshot_path)}, app=app)
 
-                    # generate the browser action - action agent - ip: screenshot, action, op: agent_decided_action
+                    # generate the browser action - action agent - ip: screenshot, action, op: browser_actions
+                    generated_actions = self.generate_browser_action_on_page(screenshot_path=screenshot_path, action=action)
+                    print("browser actions generated", json.dumps(generated_actions, indent=2))
+                    self.notify({"message": f"Browser actions generated", "actions": generated_actions}, app=app)
+                    
+                    last_actions = generated_actions
 
                     # do browser interaction
-
-
-                # # Example: Extract the title
-                # title = page.title() # Use the page object directly or go through interactor
-                # print(f"Query {query_id}: Page title is '{title}'")
-                # sse.publish({"message": f"Page title: {title}"}, type='status', channel=query_id)
-
-
-                # # --- End Browser Interaction Logic ---
+                    self.do_browser_actions(generated_actions, page)
+                    print("browser actions done for step", step_idx)
+                    self.notify({"message": f"Browser actions done for step {step_idx}", "actions": generated_actions}, app=app)
                 
-                self.notify({"message": f"Processing complete for query ID: {query_id}", "done": True})
-
+                print("All actions done", json.dumps(last_actions, indent=2))
+                self.notify({"message": f"All actions done", "actions": last_actions}, app=app)
+                
             except Exception as e:
                 print(f"Error processing query {query_id}: {e}")
-                self.notify({"message": f"An error occurred: {e}", "status": "error"})
+                self.notify({"message": f"An error occurred: {e}", "status": "error"}, app=app)
             finally:
                 if page:
                     page.close()
@@ -281,42 +252,52 @@ class QueryProcessorService:
             # Read the query file
             with open(f"./jobs/{query_id}.json", "r") as f:
                 query_data = json.load(f)
+            query_data["status"] = "in_progress"
+            with open(f"./jobs/{query_id}.json", "w") as f:
+                json.dump(query_data, f)
 
             query = query_data["query"]
-                
-            # Example processing - replace with actual logic
-            messages = [
-                "Starting processing...",
-                f"Processing query: {query_data['query']}",
-                "Processing complete"
-            ]
+
+            # generate action plan
+            action_plan = self.generate_action_plan(user_query=query, query_id=query_id)
             
-            for msg in messages:
-                # Push Flask app context before using `sse.publish`
-                self.notify({"query_id": query_id, "message": msg })
-                threading.Event().wait(1)  # Simulate processing time
-                
+            self.notify({"message": f"Action plan generated for query ID: {query_id}", "action_plan": action_plan}, app=app)
+
+            # execute action plan
+            self.execute_action_plan(plan=action_plan, app=app)
+
+            self.notify({"message": f"Processing complete for query ID: {query_id}", "done": True}, app=app)
+
+            # Update status to done
+            query_data["status"] = "done"
+            query_data["completed_at"] = datetime.now().isoformat()
+            with open(f"./jobs/{query_id}.json", "w") as f:
+                json.dump(query_data, f)
+
         except Exception as e:  
             print(f"Error processing query {query_id}: {str(e)}")
 
+query_processor_service = QueryProcessorService(openai=openai)
 
-if __name__ == "__main__":
-    processor = QueryProcessorService(openai=openai)
+# if __name__ == "__main__":
+    # processor = QueryProcessorService(openai=openai)
     # result = processor.generate_action_plan(
     #     user_query="search for green frontier capital yourstory on google and get the headline of the first article", 
-    #     query_id="ebd45c17-99d6-412c-ae3a-35f1231941b7"
+    #     query_id="47204a6b-8eb1-4d83-bcf1-2d7ba8cba740"
     # )
     # print(json.dumps(result, indent=4))
-    processor.execute_action_plan(plan={
-        "goto": "https://www.google.com/",
-        "action_plan": [
-            "Open your web browser and go to https://www.google.com/.",
-            "In the Google search bar, type 'green frontier capital yourstory' and press Enter.",
-            "Look at the search results and find the first article from YourStory.",
-            "Click on the first article from YourStory to open it.",
-            "Read the headline of the article."
-        ],
-        "goal": "The headline of the first article from YourStory about Green Frontier Capital.",
-        "query_id": "ebd45c17-99d6-412c-ae3a-35f1231941b7",
-        "query": "search for green frontier capital yourstory on google and get the headline of the first article"
-    }, app=None)
+    # processor.execute_action_plan(plan={
+    #     "goto": "https://www.google.com/",
+    #     "action_plan": [
+    #         "Open your web browser and go to https://www.google.com/.",
+    #         "In the Google search bar, type 'green frontier capital yourstory' and press Enter.",
+    #         "Click on the first article from YourStory to open it.",
+    #         "Read the headline of the article."
+    #     ],
+    #     "goal": "The headline of the first article from YourStory about Green Frontier Capital.",
+    #     "query_id": "47204a6b-8eb1-4d83-bcf1-2d7ba8cba740",
+    #     "query": "search for green frontier capital yourstory on google and get the headline of the first article",
+    #     "vision_only": [
+    #         "Read the headline of the article."
+    #     ]
+    # }, app=None)

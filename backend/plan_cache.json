@@ -1,15 +1,23 @@
 {
-  "search for green frontier capital yourstory on google and get the headline of the first article": {
-    "goto": "https://www.google.com",
+  "get the latest funding round for green frontier capital from yourstory": {
+    "goto": "https://yourstory.com",
     "action_plan": [
-      "Open your web browser and go to https://www.google.com.",
-      "In the Google search bar, type 'green frontier capital yourstory' and press Enter.",
-      "Look at the search results and find the first article from YourStory.",
-      "Click on the first article from YourStory to open it.",
-      "Read the headline of the article."
+      {
+        "action": "identify and click on the search bar"
+      },
+      {
+        "action": "type 'Green Frontier Capital latest funding round' and press Enter"
+      },
+      {
+        "action": "identify and click on the most relevant search result that mentions Green Frontier Capital's latest funding round"
+      },
+      {
+        "action": "extract the details of the latest funding round from the article",
+        "vision_only": true
+      }
     ],
-    "goal": "The headline of the first article from YourStory about Green Frontier Capital.",
-    "query_id": "ebd45c17-99d6-412c-ae3a-35f1231941b7",
-    "query": "search for green frontier capital yourstory on google and get the headline of the first article"
+    "goal": "Validate by confirming the details of the latest funding round for Green Frontier Capital mentioned in the YourStory article.",
+    "query_id": "47204a6b-8eb1-4d83-bcf1-2d7ba8cba740",
+    "query": "get the latest funding round for green frontier capital from yourstory"
   }
 }
