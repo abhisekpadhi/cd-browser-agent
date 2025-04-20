@@ -1,3 +1,9 @@
+# Demo
+
+https://www.youtube.com/watch?v=Q685CLK73Dc
+
+[![Demo Video](https://img.youtube.com/vi/Q685CLK73Dc/0.jpg)](https://www.youtube.com/watch?v=Q685CLK73Dc)
+
 # Browser agent
 
 This is a browser use agent that can take user query in natural language and execute actions on behalf of the user.
@@ -144,3 +150,7 @@ npm run dev
 
 -   **User perceived latency** -
     We can build a recall layer for creating cache of popular user queries so users will feel instant results for popular queries on popular websites, rather than waiting for crawling to finish.
+
+-   **Repository layer** - Decoupple data read/write activities from the service layer to a repository layer, so we can swap out the underlying storage layer in future with minimal code change.
+
+-   **Async logging** - Replace print statements with async json logging that is stanadardised
