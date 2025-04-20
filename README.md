@@ -12,6 +12,18 @@ This is a browser use agent that can take user query in natural language and exe
 
 ## Design
 
+### Principles
+
+-   DOM-based crawling & browser control does not work today because
+
+    -   it's fragile since CSS classes & selectors can change on a webapte
+    -   It's not resilient to UI changes
+    -   Brittle with JS heavy SPA websites
+
+-   The application will be used by non-technical user, they should be able to troubleshoot
+
+-   The application should have a way for human-in-the-loop feedback and decision making
+
 ### Low-level
 
 -   This project implements a vision model based browser control agents.
